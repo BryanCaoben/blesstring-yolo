@@ -3,6 +3,7 @@ LabelStudio ML Backend API
 实现LabelStudio ML后端接口，用于自动预标注
 """
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional
 import base64
 import httpx
@@ -105,9 +106,12 @@ async def predict(request: Request):
                     "score": 0.0
                 })
         
-        # LabelStudio期望直接返回结果数组，而不是包装在{"results": [...]}中
+        # LabelStudio期望返回格式: {"results": [...]}
+        # 使用JSONResponse确保返回正确的格式
         logger.info(f"返回预测结果: {len(results)} 个任务结果")
-        return results
+        response_data = {"results": results}
+        print(f"[ML Backend] 返回响应: {response_data}")  # 调试输出
+        return JSONResponse(content=response_data)
         
     except HTTPException:
         raise
