@@ -7,6 +7,6 @@ python-dotenv==1.0.0
 pydantic==2.5.0
 aiofiles==23.2.1
 httpx==0.25.2
-opencv-python==4.8.1.78
-numpy==1.24.3
+# 注意：numpy 和 opencv-python 由 ultralytics 自动安装，不需要手动指定
+# 这样可以避免版本冲突和 Python 3.12 兼容性问题
 
