@@ -2,7 +2,7 @@ import json
 import uuid
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from app.config import MODELS_METADATA_FILE, MODEL_DIR
 from app.models.schemas import ModelMetadata, ModelType

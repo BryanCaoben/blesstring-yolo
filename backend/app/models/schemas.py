@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -81,6 +81,8 @@ class TrainingConfig(BaseModel):
     device: str = "cpu"  # cpu or cuda
 
 class TrainingTask(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     id: str
     name: str
     dataset_path: str
@@ -113,6 +115,8 @@ class ModelType(str, Enum):
     SEGMENTATION = "segmentation"  # 分割模型
 
 class ModelMetadata(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    
     id: str
     name: str
     filename: str
