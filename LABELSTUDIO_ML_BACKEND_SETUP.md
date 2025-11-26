@@ -34,10 +34,12 @@ curl http://localhost:8000/api/v1/ml/health
    - 点击项目设置（Settings）
 
 3. **添加ML后端**
-   - 在设置页面找到 "Machine Learning" 或 "ML Backend" 部分
-   - 点击 "Add ML Backend" 或 "Connect Model"
+   - 在设置页面顶部标签栏，点击 **"Model"** 标签页
+   - 在 "Machine Learning Backend" 部分，找到并点击 **"Create"** 或 **"Add ML Backend"** 按钮
+   - 如果已有后端列表，可以点击 **"Connect Model"** 或 **"+"** 按钮
 
 4. **填写ML后端URL**
+   - 在 "URL" 或 "ML Backend URL" 输入框中填写：
    ```
    http://your-server-ip:8000/api/v1/ml
    ```
@@ -45,12 +47,14 @@ curl http://localhost:8000/api/v1/ml/health
    > 注意：将 `your-server-ip` 替换为你的实际服务器IP地址
    > 
    > 示例：
-   > - 本地开发：`http://localhost:8000/api/v1/ml`
+   > - 本地开发（LabelStudio和后端在同一台服务器）：`http://localhost:8000/api/v1/ml`
    > - 远程服务器：`http://192.168.1.100:8000/api/v1/ml`
+   > - 如果后端在远程服务器：`http://后端服务器IP:8000/api/v1/ml`
 
 5. **保存配置**
-   - 点击 "Save" 或 "Connect"
-   - 如果配置成功，会显示 "Connected" 状态
+   - 点击 **"Save"** 或 **"Test Connection"** 按钮
+   - 如果配置成功，会显示 **"Connected"** 状态或绿色连接指示
+   - 可以在 "Model" 标签页看到已连接的ML后端列表
 
 #### 方式二：通过API配置
 
@@ -81,9 +85,14 @@ curl -X POST "http://localhost:8080/api/projects/$PROJECT_ID/ml-backends/" \
 ### 3. 启用自动预标注
 
 在项目设置中：
-1. 找到 "Predictions" 或 "自动预标注" 选项
-2. 启用 "Enable auto-annotation" 或 "自动标注"
-3. 保存设置
+1. 点击 **"Predictions"** 标签页
+2. 启用 **"Enable auto-annotation"** 或勾选 "Use predictions for pre-labeling"
+3. 如果有多个ML后端，选择刚才添加的后端
+4. 保存设置
+
+> 💡 **提示**：
+> - 有些版本的LabelStudio会在上传图片时自动调用已连接的ML后端，无需额外配置
+> - 如果上传图片后没有自动预标注，检查 "Model" 标签页中ML后端的状态是否为 "Connected"
 
 ### 4. 测试配置
 
@@ -125,10 +134,30 @@ curl -X POST "http://localhost:8080/api/projects/$PROJECT_ID/ml-backends/" \
 **问题**：LabelStudio显示无法连接到ML后端
 
 **解决方案**：
-1. 检查后端服务是否运行：`curl http://localhost:8000/api/v1/ml/health`
-2. 检查防火墙设置，确保8000端口开放
-3. 检查URL是否正确（包含 `/api/v1/ml`）
-4. 检查CORS设置（后端已配置允许所有来源）
+1. **检查后端服务是否运行**：
+   ```bash
+   curl http://localhost:8000/api/v1/ml/health
+   # 应该返回: {"status":"UP"}
+   ```
+
+2. **检查URL是否正确**：
+   - 确保URL包含完整的路径：`http://your-server-ip:8000/api/v1/ml`
+   - 不要遗漏 `/api/v1/ml` 部分
+   - 如果LabelStudio和后端在同一台服务器，使用 `localhost` 或 `127.0.0.1`
+   - 如果LabelStudio和后端在不同服务器，使用服务器的实际IP地址
+   - 避免使用 `http://0.0.0.0:8000`，应该使用实际的IP地址
+
+3. **检查网络连接**：
+   - 从LabelStudio服务器测试后端连接：
+     ```bash
+     curl http://后端IP:8000/api/v1/ml/health
+     ```
+   - 检查防火墙设置，确保8000端口开放
+   - 检查CORS设置（后端已配置允许所有来源）
+
+4. **查看后端日志**：
+   - 查看后端启动日志，确认是否有 `/api/v1/ml` 相关的路由注册信息
+   - 查看是否有连接请求的错误信息
 
 ### 没有自动预标注
 

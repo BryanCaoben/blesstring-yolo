@@ -23,8 +23,17 @@ async def predict(request: Request):
     LabelStudio ML后端预测接口
     接收LabelStudio格式的请求，返回预标注结果
     """
+    import traceback
+    import logging
+    
+    # 配置日志
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
     try:
         body = await request.json()
+        print(f"[ML Backend] 收到预测请求: {body}")  # 也输出到控制台
+        logger.info(f"收到预测请求: {body}")
         
         # LabelStudio请求格式:
         # {
@@ -39,6 +48,7 @@ async def predict(request: Request):
         
         tasks = body.get("tasks", [])
         if not tasks:
+            logger.warning("没有提供tasks")
             raise HTTPException(status_code=400, detail="No tasks provided")
         
         results = []
@@ -50,31 +60,61 @@ async def predict(request: Request):
             # 获取图片数据
             image_url = task_data.get("image")
             if not image_url:
+                logger.warning(f"Task {task_id} 没有图片URL")
+                # 返回空结果而不是跳过
+                results.append({
+                    "result": [],
+                    "score": 0.0
+                })
                 continue
             
+            logger.info(f"处理Task {task_id}, 图片URL: {image_url[:100]}...")
+            
             # 下载或读取图片
-            image_path = await _get_image_path(image_url)
+            try:
+                image_path = await _get_image_path(image_url)
+                logger.info(f"图片已下载/读取: {image_path}")
+            except Exception as e:
+                logger.error(f"获取图片失败: {e}")
+                traceback.print_exc()
+                results.append({
+                    "result": [],
+                    "score": 0.0
+                })
+                continue
             
             # 执行分割
             try:
                 from app.services.yolo_service import YoloService
                 from app.models.schemas import SegmentResult
+                
+                logger.info(f"开始执行分割: {image_path}")
                 segment_result = YoloService.segment(str(image_path))
+                logger.info(f"分割完成，找到 {len(segment_result.masks)} 个mask")
                 
                 # 转换为LabelStudio格式
                 labelstudio_result = _convert_to_labelstudio_format(segment_result, task_id)
+                logger.info(f"转换完成，结果: {len(labelstudio_result.get('result', []))} 个标注")
                 results.append(labelstudio_result)
             except Exception as e:
-                # 如果分割失败，返回空结果
+                logger.error(f"分割失败: {e}")
+                traceback.print_exc()
+                # 如果分割失败，返回空结果（但不是空数组）
                 results.append({
                     "result": [],
                     "score": 0.0
                 })
         
-        return {"results": results}
+        # LabelStudio期望直接返回结果数组，而不是包装在{"results": [...]}中
+        logger.info(f"返回预测结果: {len(results)} 个任务结果")
+        return results
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"预测请求处理失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 async def _get_image_path(image_url: str) -> Path:
     """获取图片路径，支持URL和base64"""
@@ -116,59 +156,66 @@ def _convert_to_labelstudio_format(segment_result, task_id: Optional[int] = None
     """
     将分割结果转换为LabelStudio格式
     
-    LabelStudio格式:
+    LabelStudio期望的格式:
     {
       "result": [{
-        "from_name": "label",
-        "to_name": "image",
-        "type": "brushlabels",
-        "value": {
-          "brushlabels": ["scratch"],
-          "format": "rle",
-          "rle": [...]  # RLE编码的mask
-        }
-      }],
-      "score": 0.95
-    }
-    
-    或者使用polygon格式:
-    {
-      "result": [{
-        "from_name": "label",
-        "to_name": "image",
+        "from_name": "label",  # 必须与标注配置中的from_name匹配
+        "to_name": "image",    # 必须与标注配置中的to_name匹配
         "type": "polygonlabels",
         "value": {
           "polygonlabels": ["scratch"],
-          "points": [[x1, y1], [x2, y2], ...]
-        }
+          "points": [[x1, y1], [x2, y2], ...]  # 相对坐标 (0-100)
+        },
+        "score": 0.95
       }],
       "score": 0.95
     }
     """
     result_items = []
     
+    if not segment_result or not segment_result.masks:
+        # 如果没有检测到任何东西，返回空结果
+        return {
+            "result": [],
+            "score": 0.0
+        }
+    
     for mask in segment_result.masks:
         # 使用polygon格式（更简单，不需要RLE编码）
-        polygon_points = [[point.x, point.y] for point in mask.polygon]
+        # 确保points是相对坐标 (0-100)，而不是绝对坐标
+        polygon_points = []
+        
+        for point in mask.polygon:
+            # 确保坐标是数值类型
+            x = float(point.x) if hasattr(point, 'x') else float(point[0])
+            y = float(point.y) if hasattr(point, 'y') else float(point[1])
+            polygon_points.append([x, y])
+        
+        # LabelStudio要求至少有3个点才能形成多边形
+        if len(polygon_points) < 3:
+            continue
         
         result_item = {
-            "from_name": "label",
-            "to_name": "image",
+            "from_name": "label",  # 这个名称需要与Label Studio项目配置匹配
+            "to_name": "image",    # 这个名称需要与Label Studio项目配置匹配
             "type": "polygonlabels",
             "value": {
-                "polygonlabels": [mask.class_name],
+                "polygonlabels": [mask.class_name] if mask.class_name else ["defect"],
                 "points": polygon_points
             },
-            "score": mask.confidence
+            "score": float(mask.confidence) if hasattr(mask, 'confidence') else 0.5
         }
         result_items.append(result_item)
     
     # 计算平均置信度
-    avg_score = sum(m.confidence for m in segment_result.masks) / len(segment_result.masks) if segment_result.masks else 0.0
+    if segment_result.masks:
+        avg_score = sum(getattr(m, 'confidence', 0.5) for m in segment_result.masks) / len(segment_result.masks)
+    else:
+        avg_score = 0.0
     
     return {
         "result": result_items,
-        "score": avg_score
+        "score": float(avg_score)
     }
 
 @router.post("/setup")
